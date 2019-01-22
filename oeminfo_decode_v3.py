@@ -32,7 +32,7 @@
 #   You should have received a copy of the GNU General Public License
 #   along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import sys, os, getopt
+import sys, os, argparse
 import zipfile
 import tempfile
 from struct import *
@@ -80,59 +80,51 @@ def unzip(filename):
     zip_ref.close()
     return os.path.join(tempdir, "oeminfo")
 
-def unpackOEM(filename, outdir = None):
+def unpackOEM(f, outdir=None):
+    print("hi")
     # added feature for 2 iterations so we learn what oeminfo this is and act accordingly
     if (outdir == None):
         HW_Version=b"" #61
         HW_Region=b""  #12
         SW_Version=b""  #4e
 
-    with open(filename, "rb") as f:
-        binary = f.read()
-        content_length=len(binary)
-        content_startbyte=0
-
-        #catch wrong filesize - cheap but works for my needs
-        if content_length != 67108864:
-            return
-
-        #if we know the name already, do we have the out dir available?
-        if outdir != None:
-            if not os.path.exists(outdir):
-                os.makedirs(outdir)
+    binary = f.read()
+    content_length=len(binary)
+    content_startbyte=0
+    #catch wrong filesize - cheap but works for my needs
+    if content_length != 67108864:
+        print("Wrong filesize")
+        return
+    #if we know the name already, do we have the out dir available?
+    if outdir != None:
+        if not os.path.exists(outdir):
+            os.makedirs(outdir)
 
         #iterate the whole binary
-        while content_startbyte <content_length:
-            (header, fixed6, id, type, data_len, age) = unpack("8sIIIII",binary[content_startbyte:content_startbyte+0x1c])
-#            print(header, fixed6, id, type, data_len, age)
-            #Valid header?
-            if header == b"OEM_INFO":
-                #Catch special values for directory naming
-                if id == 0x61:
-                    HW_Version = binary[content_startbyte+0x200:content_startbyte+0x200+data_len]
-                if id == 0x12:
-                    HW_Region = binary[content_startbyte+0x200:content_startbyte+0x200+data_len]
-                if id == 0x4e:
-                    SW_Version = binary[content_startbyte+0x200:content_startbyte+0x200+data_len]
-
-                #prepare the "outfilename"
-#                fileout= "%s\\%04x-%04x-%04x" % (outdir, id,type, age)
-
-
-                #write
-                if outdir != None:
-                    fileout = "{:x}-{:x}-{:x}-{:x}".format(id, type, age, content_startbyte)
-                    print("hdr:%s age:%08x id:%04x %s " % (header.decode('utf-8'), age, id, element(id) ))
-                    with open(os.path.join(outdir, fileout+".bin"), "wb") as f:
-                        f.write(binary[content_startbyte+0x200:content_startbyte+0x200+data_len])
+    while content_startbyte <content_length:
+        (header, fixed6, id, type, data_len, age) = unpack("8sIIIII",binary[content_startbyte:content_startbyte+0x1c])
+        #Valid header?
+        if header == b"OEM_INFO":
+            #Catch special values for directory naming
+            if id == 0x61:
+                HW_Version = binary[content_startbyte+0x200:content_startbyte+0x200+data_len]
+            if id == 0x12:
+                HW_Region = binary[content_startbyte+0x200:content_startbyte+0x200+data_len]
+            if id == 0x4e:
+                SW_Version = binary[content_startbyte+0x200:content_startbyte+0x200+data_len]
+            #prepare the "outfilename"
+            if outdir != None:
+                fileout = "{:x}-{:x}-{:x}-{:x}".format(id, type, age, content_startbyte)
+                print("hdr:%s age:%08x id:%04x %s " % (header.decode('utf-8'), age, id, element(id) ))
+                with open(os.path.join(outdir, fileout+".bin"), "wb") as f:
+                    f.write(binary[content_startbyte+0x200:content_startbyte+0x200+data_len])
+                if element(id):
+                    os.symlink(fileout+".bin", os.path.join(outdir, element(id)+"."+hex(content_startbyte)))
+                if type == 0x1fa5:
                     if element(id):
-                        os.symlink(fileout+".bin", os.path.join(outdir, element(id)+"."+hex(content_startbyte)))
-                    #print "%s" % (binary[content_startbyte+0x200:content_startbyte+0x200+data_len])
-                    if type == 0x1fa5:
-                        if element(id):
-                            os.symlink(fileout+".bin", os.path.join(outdir, element(id)+"."+hex(content_startbyte)+".bmp"))
-            #forward another 0x400 bytes for upcoming "oem_info"
-            content_startbyte+=0x400;
+                        os.symlink(fileout+".bin", os.path.join(outdir, element(id)+"."+hex(content_startbyte)+".bmp"))
+        #forward another 0x400 bytes for upcoming "oem_info"
+        content_startbyte+=0x400;
     #return directory name
     if outdir == None:
         return HW_Version.decode('utf8')+"#"+HW_Region.decode('utf8').replace("/","-")+"#"+SW_Version.decode('utf8').split('\0', 1)[0]
@@ -174,28 +166,25 @@ def encodeOEM(out_filename):
     with open(out_filename, "wb") as f:
         f.write(out)
 
-def replaceOEM(in_filename,elements,out_filename):
-    with open(filename, "rb") as f:
-        binary = bytearray(f.read())
-        content_length=len(binary)
-        content_startbyte=0
-
-        #catch wrong filesize - cheap but works for my needs
-        if content_length != 67108864:
-            return
-        while content_startbyte <content_length:
-            (header, fixed6, id, type, data_len, age) = unpack("8sIIIII",binary[content_startbyte:content_startbyte+0x1c])
-#            print(header, fixed6, id, type, data_len, age)
-            #Valid header?
-            if header == b"OEM_INFO":
-                if id in elements:
-                    # All we care about is data_len.
-                    content_length = len(elements[id])
-                    pack_into("8sIIIII", binary, content_startbyte, b"OEM_INFO", 6, id, type, content_length, age)
-                    binary[content_startbyte+0x200:content_startbyte+0x200+content_length] = elements[id]
-            content_startbyte+=0x400;
-        with open(out_filename, "wb") as out:
-            out.write(bytes(binary))
+def replaceOEM(f, elements, out):
+    binary = bytearray(f.read())
+    content_length=len(binary)
+    content_startbyte=0
+    #catch wrong filesize - cheap but works for my needs
+    if content_length != 67108864:
+        print("Wrong filesize")
+        return
+    while content_startbyte <content_length:
+        (header, fixed6, id, type, data_len, age) = unpack("8sIIIII",binary[content_startbyte:content_startbyte+0x1c])
+        #Valid header?
+        if header == b"OEM_INFO":
+            if id in elements:
+                # All we care about is data_len.
+                content_length = len(elements[id])
+                pack_into("8sIIIII", binary, content_startbyte, b"OEM_INFO", 6, id, type, content_length, age)
+                binary[content_startbyte+0x200:content_startbyte+0x200+content_length] = elements[id]
+        content_startbyte+=0x400;
+    out.write(bytes(binary))
 
 
 
@@ -204,61 +193,107 @@ def help(script):
     print(script+' -a <action> -i <inputfile> -r <replace_inputfile> -o <outputfile> -t <type 0x00>')
     sys.exit()
 
+
+class StoreDictKeyPair(argparse.Action):
+     def __init__(self, option_strings, dest, nargs=None, **kwargs):
+         self._nargs = nargs
+         super(StoreDictKeyPair, self).__init__(option_strings, dest, nargs=nargs, **kwargs)
+     def __call__(self, parser, namespace, values, option_string=None):
+         my_dict = {}
+         for kv in values:
+             k,v = kv.split("=")
+             if v[0] == "#":
+                 with open(v, 'rb') as f:
+                     v = f.read()
+             else:
+                 v = v.encode('utf-8')
+             my_dict[k] = v
+         setattr(namespace, self.dest, my_dict)
+
+
 def main(argv):
-    in_filename=''
-    out_filename = ''
-    action = ''
-    type = '0x'
-    rin_filename=''
+    parser = argparse.ArgumentParser()
+    subparsers = parser.add_subparsers()
 
-    try:
-        opts, args = getopt.getopt(argv[1:],"ha:i:o:r:t:",["action=","ifile=","ofile=","type="])
-    except getopt.GetoptError:
-        help(argv[0])
-        sys.exit(2)
-    for opt, arg in opts:
-        if opt == '-h':
-            help(argv[0])
+    parser_extract = subparsers.add_parser("extract")
+    parser_extract.add_argument("-i", "--input", dest='input', action='store', type=argparse.FileType('rb'), required=True)
+    parser_extract.add_argument("-o", "--output", dest='output', action='store', type=str, default=None)
+    parser_extract.set_defaults(func=unpackOEM)
 
-        elif opt in ("-i", "--ifile"):
-            in_filename = arg
-        elif opt in ("-o", "--ofile"):
-            out_filename = arg
-        elif opt in ("-r", "--rfile"):
-            rin_filename = arg
-        elif opt in ("-t", "--type"):
-            type = arg
-        elif opt in ("-a", "--action"):
-            if (arg != "decode" and arg != "replace" and arg != "encode"):
-                print("wrong -a")
-            action = arg
+    parser_pack = subparsers.add_parser("pack")
+    parser_pack.add_argument("-i", "--input", dest='input', action='store', type=str, required=True)
+    parser_pack.add_argument("-o", "--output", dest='output', action='store', type=argparse.FileType('wb'), required=True)
+    parser_pack.set_defaults(func=encodeOEM)
+
+    parser_replace = subparsers.add_parser("replace")
+    parser_replace.add_argument("-i", "--input", dest='input', action='store', type=argparse.FileType('rb'), required=True)
+    parser_replace.add_argument("-o", "--output", dest='output', action='store', type=argparse.FileType('wb'), required=True)
+    parser_replace.add_argument("-e", "--elements", dest='elements', action=StoreDictKeyPair, nargs="+", required=True)
+    parser_replace.set_defaults(func=replaceOEM)
+
+    args = parser.parse_args()
+    print(args)
+    print(args.func)
+
+    if hasattr(args, 'elements'):
+        print(args.func(args.input, args.elements, args.output))
+    else:
+        print(args.func(args.input, args.output))
+
+#    in_filename=''
+#    out_filename = ''
+#    action = ''
+#    type = '0x'
+#    rin_filename=''
+
+#    try:
+#        opts, args = getopt.getopt(argv[1:],"ha:i:o:r:t:",["action=","ifile=","ofile=","type="])
+#    except getopt.GetoptError:
+#        help(argv[0])
+#        sys.exit(2)
+#    for opt, arg in opts:
+#        if opt == '-h':
+#            help(argv[0])
+
+#        elif opt in ("-i", "--ifile"):
+#            in_filename = arg
+#        elif opt in ("-o", "--ofile"):
+#            out_filename = arg
+#        elif opt in ("-r", "--rfile"):
+#            rin_filename = arg
+#        elif opt in ("-t", "--type"):
+#            type = arg
+#        elif opt in ("-a", "--action"):
+#            if (arg != "decode" and arg != "replace" and arg != "encode"):
+#                print("wrong -a")
+#            action = arg
 
     #validate if a file is given
 #    if in_filename == "":
 #        help(argv[0])
 
-    if os.path.splitext(in_filename)[1] == ".zip":
-            in_filename = unzip(in_filename)
+#    if os.path.splitext(in_filename)[1] == ".zip":
+#            in_filename = unzip(in_filename)
 
-    if action == "" or action == "decode":
-        #:decode
-        outdir = unpackOEM(in_filename)
-        unpackOEM(in_filename,outdir)
+#    if action == "" or action == "decode":
+#        #:decode
+#        outdir = unpackOEM(in_filename)
+#        unpackOEM(in_filename,outdir)
 
-    if action == "replace":
-        if rin_filename == "" or out_filename == "" or type == '0x':
-            help(argv[0])
-        print("replace")
+#    if action == "replace":
+#        if rin_filename == "" or out_filename == "" or type == '0x':
+#            help(argv[0])
+#        print("replace")
         #:replace
-        data_arr =  unpackOEM(in_filename,None,int(type,16))
-        #print data_arr
-        replaceOEM(in_filename,rin_filename,data_arr,out_filename)
+#        data_arr =  unpackOEM(in_filename,None,int(type,16))
+#        #print data_arr
+#        replaceOEM(in_filename,rin_filename,data_arr,out_filename)
 
-    if action == "encode":
-        if out_filename == "":
-            help(argv[0])
-        print("encode")
-        encodeOEM(out_filename)
+#    if action == "encode":
+#        if out_filename == "":
+#            help(argv[0])
+#        print("encode")
+#        encodeOEM(out_filename)
 
 
 if __name__ == "__main__":
