@@ -174,30 +174,30 @@ def encodeOEM(out_filename):
     with open(out_filename, "wb") as f:
         f.write(out)
 
-def replaceOEM(in_filename,element_filename,data_arr,out_filename):
-    OutBuf = create_string_buffer(67108864)
-    sectBufFill=create_string_buffer(0x100)
-    counter=0
-    while counter < 0x100 :
-        pack_into("B",sectBufFill,counter,0xFF)
-        counter+=1
-    with open(in_filename, "rb") as f:
-        InBuf = f.read()
-        OutBuf[0:67108864]=InBuf
-        buf_start = data_arr[2]
-        with open(element_filename,"rb") as infile:
-            buf=infile.read()
-            content_length=len(buf)
-            #sectBufFill
-            #id, age,header_Start,content_start,length
+def replaceOEM(in_filename,elements,out_filename):
+    with open(filename, "rb") as f:
+        binary = bytearray(f.read())
+        content_length=len(binary)
+        content_startbyte=0
 
-            type=6 #type is ALWAYS 6
-            pack_into("8sIIIII",OutBuf,buf_start,b"OEM_INFO", 6, int(data_arr[0]), int(type), int(content_length), int(data_arr[1]))
-            OutBuf[buf_start+0x200:buf_start+0x200+0x100]=sectBufFill
-            OutBuf[buf_start+0x200:buf_start+0x200+content_length]=buf
+        #catch wrong filesize - cheap but works for my needs
+        if content_length != 67108864:
+            return
+        while content_startbyte <content_length:
+            (header, fixed6, id, type, data_len, age) = unpack("8sIIIII",binary[content_startbyte:content_startbyte+0x1c])
+#            print(header, fixed6, id, type, data_len, age)
+            #Valid header?
+            if header == b"OEM_INFO":
+                if id in elements:
+                    # All we care about is data_len.
+                    content_length = len(elements[id])
+                    pack_into("8sIIIII", binary, content_startbyte, b"OEM_INFO", 6, id, type, content_length, age)
+                    binary[content_startbyte+0x200:content_startbyte+0x200+content_length] = elements[id]
+            content_startbyte+=0x400;
+        with open(out_filename, "wb") as out:
+            out.write(bytes(binary))
 
-        with open(out_filename, "wb") as f:
-            f.write(OutBuf.raw)
+
 
 
 def help(script):
