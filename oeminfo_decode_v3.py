@@ -115,7 +115,7 @@ def unpackOEM(f, outdir=None):
             #prepare the "outfilename"
             if outdir != None:
                 fileout = "{:x}-{:x}-{:x}-{:x}".format(id, type, age, content_startbyte)
-                print("hdr:%s age:%08x id:%04x %s " % (header.decode('utf-8'), age, id, element(id) ))
+                print("hdr:{} age:{:x} id:{:x} {} ".format(header.decode('utf-8'), age, id, element(id)))
                 with open(os.path.join(outdir, fileout+".bin"), "wb") as f:
                     f.write(binary[content_startbyte+0x200:content_startbyte+0x200+data_len])
                 if element(id):
@@ -127,8 +127,10 @@ def unpackOEM(f, outdir=None):
         content_startbyte+=0x400;
     #return directory name
     if outdir == None:
-        return HW_Version.decode('utf8')+"#"+HW_Region.decode('utf8').replace("/","-")+"#"+SW_Version.decode('utf8').split('\0', 1)[0]
-
+        outdir = HW_Version.decode('utf8')+"#"+HW_Region.decode('utf8').replace("/","-")+"#"+SW_Version.decode('utf8').split('\0', 1)[0]
+        f.seek(0, 0)
+        unpackOEM(f, outdir)
+    return outdir
 
 def encodeOEM(out_filename):
     out = bytearray(b'\x00'*0x4000000)
@@ -213,7 +215,7 @@ class StoreDictKeyPair(argparse.Action):
 
 def main(argv):
     parser = argparse.ArgumentParser()
-    subparsers = parser.add_subparsers()
+    subparsers = parser.add_subparsers(required=True)
 
     parser_extract = subparsers.add_parser("extract")
     parser_extract.add_argument("-i", "--input", dest='input', action='store', type=argparse.FileType('rb'), required=True)
@@ -231,6 +233,11 @@ def main(argv):
     parser_replace.add_argument("-e", "--elements", dest='elements', action=StoreDictKeyPair, nargs="+", required=True)
     parser_replace.set_defaults(func=replaceOEM)
 
+    if len(sys.argv) < 2:
+        sys.stderr.write('error: no subcommand\n')
+        sys.stderr.flush()
+        parser.print_help()
+        sys.exit()
     args = parser.parse_args()
     print(args)
     print(args.func)
