@@ -61,7 +61,7 @@ elements = {
     0x96:"Unknown SHA256 3",
     0xa6:"Update Token",
     0xa9:"Some kind of json changelog",
-    0x15f:"Logo Boot",
+    0x15f:"Logo Boot", # Can be overriden in product, version, vendor or system partitions
     0x160:"Logo Battery Empty",
     0x161:"Logo Battery Charge",
 }
@@ -81,7 +81,6 @@ def unzip(filename):
     return os.path.join(tempdir, "oeminfo")
 
 def unpackOEM(f, outdir=None):
-    print("hi")
     # added feature for 2 iterations so we learn what oeminfo this is and act accordingly
     if (outdir == None):
         HW_Version=b"" #61
@@ -146,13 +145,14 @@ def encodeOEM(out_filename):
                     data=infile.read()
                     content_length=len(data)
                     if int(id, 16) == 0x69 or int(id, 16) == 0x57 or int(id, 16) == 0x44:
-                        out[buf_start-0x1000:buf_start]=b'\xff'*0x1000 #The 0x1000 bytes before each entry should be 00'd out. However, the 0s should be applied before, NOT AFTEr, the previous entry has applied its FF's for the 1k after
+                        out[buf_start-0x1000:buf_start]=b'\xff'*0x1000 #The 0x1000 bytes before each entry should be 00'd out. However, the 0s should be applied before, NOT AFTER, the previous entry has applied its FF's for the 1k after
                     if int(type, 16) != 0x1fa5 or (int(id, 16) == 0x15f and int(age, 16) > 1) and (int(id, 16) != 0x160 and int(id, 16) != 161):
                         print(type)
                         out[buf_start:buf_start+0x1000]=b'\xff'*0x1000
                     pack_into("8sIIIII",out,buf_start,b"OEM_INFO", 6, int(id,16), int(type,16), int(content_length), int(age,16))
                     out[buf_start+0x200:buf_start+0x200+content_length]=data
                 #fileNamePath = str(os.path.join(str(root),str(subFolder),str(item)))
+# Huawei decided to randomly put FFs in their file, I pay respects below.
 #    out[0x55000:0x56000] = b'\xff'*0x1000
     out[0x5d000:0x5e000] = b'\xff'*0x1000
 #    out[0x67000:0x68000] = b'\xff'*0x1000
