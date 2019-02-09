@@ -212,6 +212,8 @@ class StoreDictKeyPair(argparse.Action):
              else:
                  v = v.encode('utf-8')
              my_dict[k] = v
+         if hasattr(namespace, self.dest) and getattr(namespace, self.dest) != None:
+             my_dict = {**getattr(namespace, self.dest), **my_dict}
          setattr(namespace, self.dest, my_dict)
 
 
