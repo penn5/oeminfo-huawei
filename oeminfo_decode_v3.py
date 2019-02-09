@@ -1,3 +1,4 @@
+#!/usr/bin/env python3.7
 #OEMINFO tool
 #rysmario 2016
 #   hackish tool to "unpack" a oeminfo from huawei
@@ -180,11 +181,11 @@ def replaceOEM(f, elements, out):
         (header, fixed6, id, type, data_len, age) = unpack("8sIIIII",binary[content_startbyte:content_startbyte+0x1c])
         #Valid header?
         if header == b"OEM_INFO":
-            if id in elements:
+            if id in elements.keys():
                 # All we care about is data_len.
-                content_length = len(elements[id])
-                pack_into("8sIIIII", binary, content_startbyte, b"OEM_INFO", 6, id, type, content_length, age)
-                binary[content_startbyte+0x200:content_startbyte+0x200+content_length] = elements[id]
+                content_len = len(elements[id])
+                pack_into("8sIIIII", binary, content_startbyte, b"OEM_INFO", 6, id, type, content_len, age)
+                binary[content_startbyte+0x200:content_startbyte+0x200+content_len] = elements[id]
         content_startbyte+=0x400;
     out.write(bytes(binary))
 
@@ -204,6 +205,7 @@ class StoreDictKeyPair(argparse.Action):
          my_dict = {}
          for kv in values:
              k,v = kv.split("=")
+             k = int(k, 0)
              if v[0] == "#":
                  with open(v, 'rb') as f:
                      v = f.read()
