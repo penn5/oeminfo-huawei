@@ -76,7 +76,6 @@ def element(key):
 def unzip(filename):
     tempdir=tempfile.gettempdir()
     zip_ref = zipfile.ZipFile(filename, 'r')
-    #zip_ref.printdir()
     zip_ref.extract("oeminfo",tempdir)
     zip_ref.close()
     return os.path.join(tempdir, "oeminfo")
@@ -141,14 +140,12 @@ def encodeOEM(out_filename):
             if item.endswith(".bin"):
                 id, type, age, content_startbyte = item.split(".")[0].split("-")
                 buf_start = int(content_startbyte, 16)
-                print(item)
                 with open(os.path.join(root, item), "rb") as infile:
                     data=infile.read()
                     content_length=len(data)
                     if int(id, 16) == 0x69 or int(id, 16) == 0x57 or int(id, 16) == 0x44:
                         out[buf_start-0x1000:buf_start]=b'\xff'*0x1000 #The 0x1000 bytes before each entry should be 00'd out. However, the 0s should be applied before, NOT AFTER, the previous entry has applied its FF's for the 1k after
                     if int(type, 16) != 0x1fa5 or (int(id, 16) == 0x15f and int(age, 16) > 1) and (int(id, 16) != 0x160 and int(id, 16) != 161):
-                        print(type)
                         out[buf_start:buf_start+0x1000]=b'\xff'*0x1000
                     pack_into("8sIIIII",out,buf_start,b"OEM_INFO", 6, int(id,16), int(type,16), int(content_length), int(age,16))
                     out[buf_start+0x200:buf_start+0x200+content_length]=data
@@ -168,11 +165,13 @@ def encodeOEM(out_filename):
 #    out[0x2067000:0x2068000] = b'\xff'*0x1000
     with open(out_filename, "wb") as f:
         f.write(out)
+    return ""
 
 def replaceOEM(f, elements, out):
     binary = bytearray(f.read())
     content_length=len(binary)
     content_startbyte=0
+    count = 0
     #catch wrong filesize - cheap but works for my needs
     if content_length != 67108864:
         print("Wrong filesize")
@@ -186,9 +185,10 @@ def replaceOEM(f, elements, out):
                 content_len = len(elements[id])
                 pack_into("8sIIIII", binary, content_startbyte, b"OEM_INFO", 6, id, type, content_len, age)
                 binary[content_startbyte+0x200:content_startbyte+0x200+content_len] = elements[id]
+                count += 1
         content_startbyte+=0x400;
     out.write(bytes(binary))
-
+    return count
 
 
 
@@ -243,8 +243,6 @@ def main(argv):
         parser.print_help()
         sys.exit()
     args = parser.parse_args()
-    print(args)
-    print(args.func)
 
     if hasattr(args, 'elements'):
         print(args.func(args.input, args.elements, args.output))
