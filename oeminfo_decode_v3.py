@@ -39,12 +39,14 @@ from struct import *
 
 elements = {
     0x12:"Region",
+    0x43:"Root Type (info)",
     0x44:"rescue Version",
     0x4a:"16 byte string 0 terminated",
     0x4e:"Rom Version",
     0x58:"Alternate ROM Version?",
     0x5e:"OEMINFO_VENDER_AND_COUNTRY_NAME_COTA", #Taken from fastboot logs
     0x5b:"Hardware Version Customizeable",
+    0x5d:"System Lock State",
     0x61:"Hardware Version",
     0x62:"PRF?",
     0x65:"Rom Version Customizeable",
