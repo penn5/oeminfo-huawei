@@ -46,6 +46,7 @@ elements = {
     0x58:"Alternate ROM Version?",
     0x5e:"OEMINFO_VENDER_AND_COUNTRY_NAME_COTA", #Taken from fastboot logs
     0x5b:"Hardware Version Customizeable",
+    0x5c:"USB Switch?", # Guessed from fastboot logs
     0x61:"Hardware Version",
     0x62:"PRF?",
     0x65:"Rom Version Customizeable",
@@ -54,6 +55,7 @@ elements = {
     0x6a:"CN or CDMA info 0x6a",
     0x6b:"CN or CDMA info 0x6b",
     0x6f:"Software Version",
+    0x73:"Oeminfo Gamma", # From fastboot, but who knows what it actually is, has to do with hisifb_write_gm_to_reserved_mem and the display panel
     0x76:"pos_delivery constant",
     0x8b:"Unknown SHA256 1",
     0x85:"3rd_recovery constant",
