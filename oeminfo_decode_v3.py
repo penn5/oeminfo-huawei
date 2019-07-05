@@ -37,7 +37,8 @@ import zipfile
 import tempfile
 from struct import *
 
-elements = {
+elements = {6:
+  {
     0x12:"Region",
     0x43:"Root Type (info)",
     0x44:"rescue Version",
@@ -46,6 +47,7 @@ elements = {
     0x58:"Alternate ROM Version?",
     0x5e:"OEMINFO_VENDER_AND_COUNTRY_NAME_COTA", #Taken from fastboot logs
     0x5b:"Hardware Version Customizeable",
+    0x5c:"Userlock",
     0x5d:"System Lock State",
     0x61:"Hardware Version",
     0x62:"PRF?",
@@ -66,9 +68,34 @@ elements = {
     0x15f:"Logo Boot", # Can be overriden in product, version, vendor or system partitions
     0x160:"Logo Battery Empty",
     0x161:"Logo Battery Charge",
+  }, 8:
+  {
+    0x28:"Version number",
+    0x33:"Software Version as CSV",
+    0x35:"semicolon separated text containing device identifiers, possibly used in bootloader code generation",
+    0x3f:"update token",
+    0x50:"cust version",
+    0x52:"preload version",
+    0x56:"system version",
+    0x5ec:"build number",
+    0x5ee:"model number",
+    0xc:"system security data",
+    0x1197:"Logo Battery Charge",
+    0x1196:"Logo Battery Empty",
+    0x1196:"Logo additional (custom format)",
+    0x1195:"Logo Google",
+  }
 }
-def element(key):
-    returnvalue = elements.get(key)
+## Userlock definitions
+# 01 means relocked (FRP is unlocked)
+# 00 means relocked frp (FRP is locked)
+# 03 unlocked frp (FRP is locked)
+# 04 unlocked (FRP is unlocked)
+# 05 unlocked debug (GUI-mode, buggy)
+# 06 unlocked no-frp (FRP is not visible or active)
+
+def element(version, key):
+    returnvalue = elements.get(version, []).get(key, None)
     if (returnvalue == None):
         #returnvalue="0x%04x" % key
         returnvalue="" #hex(key)
@@ -95,7 +122,7 @@ def unpackOEM(f, outdir=None):
     #catch wrong filesize - cheap but works for my needs
     if content_length != 67108864:
         print("Wrong filesize")
-        return
+        #return
     #if we know the name already, do we have the out dir available?
     if outdir != None:
         if not os.path.exists(outdir):
@@ -103,9 +130,20 @@ def unpackOEM(f, outdir=None):
 
         #iterate the whole binary
     while content_startbyte <content_length:
-        (header, fixed6, id, type, data_len, age) = unpack("8sIIIII",binary[content_startbyte:content_startbyte+0x1c])
+        (header, version_number, id, type, data_len, age) = unpack("8sIIIII",binary[content_startbyte:content_startbyte+0x1c])
+#        print("{:<10}||{:<10}||{:<10}||{:<10}||{:<10}||{:<10}".format(repr(header), repr(fixed6), repr(id), repr(type), repr(data_len), repr(age)))
         #Valid header?
+        version = None
         if header == b"OEM_INFO":
+            if version == None:
+                version = version_number
+            if version != version_number:
+                print("version number changed during parsing! wtf")
+                return
+            if version_number == 8:
+                pass
+            if version_number == 6:
+                pass
             #Catch special values for directory naming
             if id == 0x61:
                 HW_Version = binary[content_startbyte+0x200:content_startbyte+0x200+data_len]
@@ -116,14 +154,14 @@ def unpackOEM(f, outdir=None):
             #prepare the "outfilename"
             if outdir != None:
                 fileout = "{:x}-{:x}-{:x}-{:x}".format(id, type, age, content_startbyte)
-                print("hdr:{} age:{:x} id:{:x} {} ".format(header.decode('utf-8'), age, id, element(id)))
+                print("hdr:{:<8} age:{:3x} id:{:5x} {} ".format(header.decode('utf-8'), age, id, element(version, id)))
                 with open(os.path.join(outdir, fileout+".bin"), "wb") as f:
                     f.write(binary[content_startbyte+0x200:content_startbyte+0x200+data_len])
-                if element(id):
-                    os.symlink(fileout+".bin", os.path.join(outdir, element(id)+"."+hex(content_startbyte)))
-                if type == 0x1fa5:
-                    if element(id):
-                        os.symlink(fileout+".bin", os.path.join(outdir, element(id)+"."+hex(content_startbyte)+".bmp"))
+                if element(version, id):
+                    os.symlink(fileout+".bin", os.path.join(outdir, element(version, id)+"."+hex(content_startbyte)))
+                if (version == 6 and type == 0x1fa5) or (version == 8 and (type == 0x2399 or type == 0x1fa5)):
+                    if element(version, id):
+                        os.symlink(fileout+".bin", os.path.join(outdir, element(version, id)+"."+hex(content_startbyte)+".bmp"))
         #forward another 0x400 bytes for upcoming "oem_info"
         content_startbyte+=0x400;
     #return directory name
