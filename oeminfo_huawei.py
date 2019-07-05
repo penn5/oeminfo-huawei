@@ -1,3 +1,4 @@
+#!/usr/bin/env python3.7
 #OEMINFO tool
 #rysmario 2016
 #   hackish tool to "unpack" a oeminfo from huawei
@@ -47,8 +48,7 @@ elements = {6:
     0x58:"Alternate ROM Version?",
     0x5e:"OEMINFO_VENDER_AND_COUNTRY_NAME_COTA", #Taken from fastboot logs
     0x5b:"Hardware Version Customizeable",
-    0x5c:"Userlock",
-    0x5d:"System Lock State",
+    0x5c:"USB Switch?", # Guessed from fastboot logs
     0x61:"Hardware Version",
     0x62:"PRF?",
     0x65:"Rom Version Customizeable",
@@ -57,6 +57,7 @@ elements = {6:
     0x6a:"CN or CDMA info 0x6a",
     0x6b:"CN or CDMA info 0x6b",
     0x6f:"Software Version",
+    0x73:"Oeminfo Gamma", # From fastboot, but who knows what it actually is, has to do with hisifb_write_gm_to_reserved_mem and the display panel
     0x76:"pos_delivery constant",
     0x8b:"Unknown SHA256 1",
     0x85:"3rd_recovery constant",
@@ -70,6 +71,8 @@ elements = {6:
     0x161:"Logo Battery Charge",
   }, 8:
   {
+    0x5c:"Userlock",
+    0x5d:"System Lock State",
     0x28:"Version number",
     0x33:"Software Version as CSV",
     0x35:"semicolon separated text containing device identifiers, possibly used in bootloader code generation",
@@ -104,7 +107,6 @@ def element(version, key):
 def unzip(filename):
     tempdir=tempfile.gettempdir()
     zip_ref = zipfile.ZipFile(filename, 'r')
-    #zip_ref.printdir()
     zip_ref.extract("oeminfo",tempdir)
     zip_ref.close()
     return os.path.join(tempdir, "oeminfo")
@@ -180,14 +182,12 @@ def encodeOEM(out_filename):
             if item.endswith(".bin"):
                 id, type, age, content_startbyte = item.split(".")[0].split("-")
                 buf_start = int(content_startbyte, 16)
-                print(item)
                 with open(os.path.join(root, item), "rb") as infile:
                     data=infile.read()
                     content_length=len(data)
                     if int(id, 16) == 0x69 or int(id, 16) == 0x57 or int(id, 16) == 0x44:
                         out[buf_start-0x1000:buf_start]=b'\xff'*0x1000 #The 0x1000 bytes before each entry should be 00'd out. However, the 0s should be applied before, NOT AFTER, the previous entry has applied its FF's for the 1k after
                     if int(type, 16) != 0x1fa5 or (int(id, 16) == 0x15f and int(age, 16) > 1) and (int(id, 16) != 0x160 and int(id, 16) != 161):
-                        print(type)
                         out[buf_start:buf_start+0x1000]=b'\xff'*0x1000
                     pack_into("8sIIIII",out,buf_start,b"OEM_INFO", 6, int(id,16), int(type,16), int(content_length), int(age,16))
                     out[buf_start+0x200:buf_start+0x200+content_length]=data
@@ -207,11 +207,13 @@ def encodeOEM(out_filename):
 #    out[0x2067000:0x2068000] = b'\xff'*0x1000
     with open(out_filename, "wb") as f:
         f.write(out)
+    return ""
 
 def replaceOEM(f, elements, out):
     binary = bytearray(f.read())
     content_length=len(binary)
     content_startbyte=0
+    count = 0
     #catch wrong filesize - cheap but works for my needs
     if content_length != 67108864:
         print("Wrong filesize")
@@ -220,14 +222,15 @@ def replaceOEM(f, elements, out):
         (header, fixed6, id, type, data_len, age) = unpack("8sIIIII",binary[content_startbyte:content_startbyte+0x1c])
         #Valid header?
         if header == b"OEM_INFO":
-            if id in elements:
+            if id in elements.keys():
                 # All we care about is data_len.
-                content_length = len(elements[id])
-                pack_into("8sIIIII", binary, content_startbyte, b"OEM_INFO", 6, id, type, content_length, age)
-                binary[content_startbyte+0x200:content_startbyte+0x200+content_length] = elements[id]
+                content_len = len(elements[id])
+                pack_into("8sIIIII", binary, content_startbyte, b"OEM_INFO", 6, id, type, content_len, age)
+                binary[content_startbyte+0x200:content_startbyte+0x200+content_len] = elements[id]
+                count += 1
         content_startbyte+=0x400;
     out.write(bytes(binary))
-
+    return count
 
 
 
@@ -244,12 +247,15 @@ class StoreDictKeyPair(argparse.Action):
          my_dict = {}
          for kv in values:
              k,v = kv.split("=")
+             k = int(k, 0)
              if v[0] == "#":
                  with open(v, 'rb') as f:
                      v = f.read()
              else:
                  v = v.encode('utf-8')
              my_dict[k] = v
+         if hasattr(namespace, self.dest) and getattr(namespace, self.dest) != None:
+             my_dict = {**getattr(namespace, self.dest), **my_dict}
          setattr(namespace, self.dest, my_dict)
 
 
@@ -279,8 +285,6 @@ def main(argv):
         parser.print_help()
         sys.exit()
     args = parser.parse_args()
-    print(args)
-    print(args.func)
 
     if hasattr(args, 'elements'):
         print(args.func(args.input, args.elements, args.output))
